@@ -307,14 +307,16 @@ if ($do_users)
 	{
 		if ($do_import)
 		{
-			$auxQuery = $importDbConnection->query("TRUNCATE users;");
-			$auxQuery = $importDbConnection->query("TRUNCATE users_groups;");
+			$auxQuery = $importDbConnection->query("DELETE FROM group_user;");
+			$auxQuery = $importDbConnection->query("DELETE FROM access_token;");
+			$auxQuery = $importDbConnection->query("DELETE FROM users;");
 		}
 		
 		if ($do_dump)
 		{
-			$testW = fwrite($fileHandler,"TRUNCATE users;".PHP_EOL);
-			$testW = fwrite($fileHandler,"TRUNCATE users_groups;".PHP_EOL);
+			$testW = fwrite($fileHandler,"DELETE FROM group_user;".PHP_EOL);
+			$testW = fwrite($fileHandler,"DELETE FROM access_token;".PHP_EOL);
+			$testW = fwrite($fileHandler,"DELETE FROM users;".PHP_EOL);
 		}
 	
 		// if avatars dir doesn't exists we create it
@@ -334,7 +336,7 @@ if ($do_users)
 				$id = $row['id_member'];
 				$email = $row['email_address'];
 				$password = sha1(md5(time())); //old password is deleted and changed with a random one
-				$jointime = date("Y-m-d H:i:s",$row['date_registered']);
+				$joined_at = date("Y-m-d H:i:s",$row['date_registered']);
 				
 				echo sprintf("User %06d - %s\n<br>",$id,$username);
 				
@@ -362,7 +364,7 @@ if ($do_users)
 				if (!$val) $avatar = "NULL";
 				
 				// We create the users table entries
-				$query = "INSERT INTO `users` (`id`, `username`, `email`, `password`, `join_time`, `avatar_path`, `is_activated`) VALUES ('$id', '$username', '$email', '$password', '$jointime', " . $avatar . ", '1');";
+				$query = "INSERT INTO `users` (`id`, `username`, `email`, `password`, `joined_at`, `avatar_url`, `is_email_confirmed`) VALUES ('$id', '$username', '$email', '$password', '$joined_at', " . $avatar . ", '1');";
 				if ($do_dump) $testW = fwrite($fileHandler,$query.PHP_EOL);
 				if ($do_import)
 				{
@@ -371,7 +373,7 @@ if ($do_users)
 				}
 				
 				// We create the users_groups table entries, adding all new users to "members" group
-				$query = "INSERT INTO `users_groups` (`user_id`, `group_id`) VALUES ('$id', '3');";
+				$query = "INSERT INTO `group_user` (`user_id`, `group_id`) VALUES ('$id', '3');";
 				if ($do_dump) $testW = fwrite($fileHandler,$query.PHP_EOL);
 				if ($do_import)
 				{
@@ -470,18 +472,18 @@ if ($do_tags)
 FLARUM							SMF
 discussion.id					topics.id_topic
 discussion.title				messages.subject
-discussion.comments_count		topics.num_replies
-discussion.participants_count	TBC
-discussion.number_index			BLANK
-discussion.start_time			messages.poster_time (from Timestamp to YYYY-MM-DD HH:II:SS)
-discussion.start_user_id		messages.id_member
-discussion.start_post_id		messages.id_msg (first topic only, of course)
-discussion.last_time			TBC
-discussion.last_user_id			topics.id_member_updated
+discussion.comment_count		topics.num_replies
+discussion.participant_count	TBC
+discussion.post_number_index	BLANK
+discussion.created_at			messages.poster_time (from Timestamp to YYYY-MM-DD HH:II:SS)
+discussion.user_id				messages.id_member
+discussion.first_post_id		messages.id_msg (first topic only, of course)
+discussion.last_posted_at		TBC
+discussion.last_posted_user_id	topics.id_member_updated
 discussion.last_post_id			topics.id_last_msg
 discussion.last_post_number		messages.num_replies
-discussion.hide_time			NULL
-discussion.hide_user_id			NULL
+discussion.hidden_at			NULL
+discussion.hidden_user_id		NULL
 discussion.is_locked			topics.locked
 discussion.is_sticky			topics.is_sticky
 */
@@ -516,16 +518,18 @@ if ($do_posts)
 		// We empty the tables, for a clean import
 		if ($do_import)
 		{
-			$auxQuery = $importDbConnection->query("TRUNCATE discussions;");
-			$auxQuery = $importDbConnection->query("TRUNCATE posts;");
-			$auxQuery = $importDbConnection->query("TRUNCATE users_discussions;");	
+			$auxQuery = $importDbConnection->query("DELETE FROM discussion_user;");
+			$auxQuery = $importDbConnection->query("DELETE FROM discussions;");
+			$auxQuery = $importDbConnection->query("DELETE FROM posts;");
+			$auxQuery = $importDbConnection->query("SET FOREIGN_KEY_CHECKS=0;");
 		}
 		
 		if ($do_dump)
 		{
-			$testW = fwrite($fileHandler,"TRUNCATE discussions;".PHP_EOL);
-			$testW = fwrite($fileHandler,"TRUNCATE posts;".PHP_EOL);
-			$testW = fwrite($fileHandler,"TRUNCATE users_discussions;".PHP_EOL);
+			$testW = fwrite($fileHandler,"DELETE FROM discussion_user;".PHP_EOL);
+			$testW = fwrite($fileHandler,"DELETE FROM discussions;".PHP_EOL);
+			$testW = fwrite($fileHandler,"DELETE FROM posts;".PHP_EOL);
+			$testW = fwrite($fileHandler,"SET FOREIGN_KEY_CHECKS=0;".PHP_EOL);
 		}
 		
 		$converted = 0;
@@ -547,9 +551,9 @@ if ($do_posts)
 				
 				$post_counter = 1;
 				$prev_id = $message["id_topic"];
-				$comments_counter = $message["num_replies"]+1;
+				$comment_counter = $message["num_replies"]+1;
 				
-				// Partecipants Count
+				// Participants Count
 				$auxQuery = $exportDbConnection->query("SELECT DISTINCT id_member FROM ".$table_prefix."messages WHERE id_topic='".$message["id_topic"]."';");
 				$participants_count = $auxQuery->num_rows;
 				$auxQuery->free_result();
@@ -561,10 +565,10 @@ if ($do_posts)
 				$auxQuery->free_result();
 				
 				// NOTE: SMF was setting user_id to 0 for deleted/banned users. A NEW LOGIC SHALL BE DEFINED HERE (Define a "fake" user with user_id like -1?
-				$query = "INSERT INTO `discussions` (`id`,`title`,`comments_count`,`participants_count`,`number_index`,`start_time`,`start_user_id`,`start_post_id`,`last_time`,`last_user_id`,
-					`last_post_id`,`last_post_number`,`hide_time`,`hide_user_id`,`slug`,`is_approved`,`is_locked`,`is_sticky`
+				$query = "INSERT INTO `discussions` (`id`,`title`,`comment_count`,`participant_count`,`post_number_index`,`created_at`,`user_id`,`first_post_id`,`last_posted_at`,`last_posted_user_id`,
+					`last_post_id`,`last_post_number`,`hidden_at`,`hidden_user_id`,`slug`,`is_approved`,`is_locked`,`is_sticky`
 					) VALUES (
-					'".$message["id_topic"]."','".$subject."','".$comments_counter."','".$participants_count."','".$message["num_replies"]."','".$message["poster_time"]."','".$message["id_member"]."','".$message["id_msg"]."','".$last_time."','".$message["id_member_updated"]."','".$message["id_last_msg"]."',DEFAULT,DEFAULT,DEFAULT,'".slugify($message["subject"])."','1','".$message["locked"]."','".$message["is_sticky"]."');";
+					'".$message["id_topic"]."','".$subject."','".$comment_counter."','".$participants_count."','".$message["num_replies"]."','".$message["poster_time"]."','".$message["id_member"]."','".$message["id_msg"]."','".$last_time."','".$message["id_member_updated"]."','".$message["id_last_msg"]."',DEFAULT,DEFAULT,DEFAULT,'".slugify($message["subject"])."','1','".$message["locked"]."','".$message["is_sticky"]."');";
 				if ($do_dump) $testW = fwrite($fileHandler,$query.PHP_EOL);
 				if ($do_import)
 				{
@@ -573,7 +577,7 @@ if ($do_posts)
 				}
 
 				// We now connect Tags with Discussions
-				$query = "INSERT IGNORE INTO discussions_tags (`discussion_id`,`tag_id`) VALUES ('".$message["id_topic"]."','".$message["id_board"]."');";
+				$query = "INSERT IGNORE INTO discussion_tag (`discussion_id`,`tag_id`) VALUES ('".$message["id_topic"]."','".$message["id_board"]."');";
 				if ($do_dump) $testW = fwrite($fileHandler,$query.PHP_EOL);
 				if ($do_import)
 				{
@@ -582,7 +586,7 @@ if ($do_posts)
 				}
 
 				// We update discussion_count in table users
-				$query = "UPDATE users SET discussions_count=discussions_count+1 WHERE id='".$message["id_member"]."';";
+				$query = "UPDATE users SET discussion_count=discussion_count+1 WHERE id='".$message["id_member"]."';";
 				if ($do_dump) $testW = fwrite($fileHandler,$query.PHP_EOL);
 				if ($do_import)
 				{
@@ -599,7 +603,7 @@ if ($do_posts)
 			if ($encoding != 'UTF-8') $body = iconv($encoding,'UTF-8',$message["body"]);	
 				
 			// Single entries in post table now...
-			$query = "INSERT INTO `posts` (`id`,`discussion_id`,`number`,`time`,`user_id`,`type`,`content`,`edit_time`,`edit_user_id`,`hide_time`,`hide_user_id`,`ip_address`,`is_approved`
+			$query = "INSERT INTO `posts` (`id`,`discussion_id`,`number`,`created_at`,`user_id`,`type`,`content`,`edited_at`,`edited_user_id`,`hidden_at`,`hidden_user_id`,`ip_address`,`is_approved`
 				) VALUES (
 				'".$message["id_msg"]."','".$message["id_topic"]."','".$post_counter."','".$message["poster_time"]."','".$message["id_member"]."','comment','".formatText($exportDbConnection,$body)."',DEFAULT,DEFAULT,DEFAULT,DEFAULT,'".$message["poster_ip"]."',1);";
 			if ($do_dump) $testW = fwrite($fileHandler,$query.PHP_EOL);
@@ -610,7 +614,7 @@ if ($do_posts)
 			}
 
 			// We add a record to users_discussions too
-			$query = "INSERT IGNORE INTO `users_discussions` (`user_id`,`discussion_id`) VALUES ('".$message["id_member"]."','".$message["id_topic"]."');";
+			$query = "INSERT IGNORE INTO `discussion_user` (`user_id`,`discussion_id`) VALUES ('".$message["id_member"]."','".$message["id_topic"]."');";
 			if ($do_dump) $testW = fwrite($fileHandler,$query.PHP_EOL);
 			if ($do_import)
 			{
@@ -619,7 +623,7 @@ if ($do_posts)
 			}
 
 			// We update discussion_count in table users
-			$query = "UPDATE users SET comments_count=comments_count+1 WHERE id='".$message["id_member"]."';";
+			$query = "UPDATE users SET comment_count=comment_count+1 WHERE id='".$message["id_member"]."';";
 			if ($do_dump) $testW = fwrite($fileHandler,$query.PHP_EOL);
 			if ($do_import)
 			{
@@ -639,6 +643,17 @@ if ($do_posts)
 			}
 		}
 		$result->free_result();
+
+		// Reenable constraints
+		if ($do_import)
+		{
+			$auxQuery = $importDbConnection->query("SET FOREIGN_KEY_CHECKS=1;");
+		}
+		
+		if ($do_dump)
+		{
+			$testW = fwrite($fileHandler,"SET FOREIGN_KEY_CHECKS=1;".PHP_EOL);
+		}
 	}
 	else
 		echo "Topic/Messages export error.";
