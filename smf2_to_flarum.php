@@ -21,6 +21,8 @@
 set_time_limit(60*60*24); // 1 day
 error_reporting(E_ALL);
 ini_set('display_errors',1);
+ini_set('zlib.output_compression',0);
+ini_set('implicit_flush',1);
 $timestamp_start = time();
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -33,6 +35,13 @@ include_once("smf2_to_flarum_settings.php");
 ///////////////////////////////////////////////////////////////////////////////
 // AUXILIARY FUNCTIONS
 ///////////////////////////////////////////////////////////////////////////////
+function flushOutput($sleep_interval)
+{
+	flush(); 
+	ob_flush();
+	usleep($sleep_interval);
+}
+
 function slugify($text)
 {
 	$text = preg_replace('~[^\\pL\d]+~u', '-', $text);
@@ -268,6 +277,8 @@ if ($do_dump) { echo "SQL FILE DUMP ENABLED<br>"; } else { echo "SQL FILE DUMP D
 if ($do_youtube_links) { echo "YOUTUBE EMBED ENABLED<br>"; } else { echo "YOUTUBE EMBED ENABLED<br>"; }
 if ($do_dump) { echo "IMAGE ATTACHMENTS EXPORT ENABLED<br>"; } else { echo "IMAGE ATTACHMENTS EXPORT DISABLED<br>"; }
 
+flushOutput($server_interval);
+
 ///////////////////////////////////////////////////////////////////////////////
 // 1) USERS
 ///////////////////////////////////////////////////////////////////////////////
@@ -371,6 +382,13 @@ if ($do_users)
 			else {
 				$usersIgnored++;
 			}
+
+			// Every 100 imported users, we sleep a few seconds
+			if (($i % 100) == 0)
+			{
+				echo "Elapsed time: ".(time() - $timestamp_start)." sec.<br>";
+				flushOutput($server_interval);
+			}
 		}
 		echo ($i-$usersIgnored) . ' of '. $totalUsers .' users converted';
 	}
@@ -440,6 +458,7 @@ if ($do_tags)
 		echo "Boards/Sub-boards export error.";
 	$result->close();
 	echo "<hr>";
+	flushOutput($server_interval);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -616,15 +635,14 @@ if ($do_posts)
 			{
 				echo "Converted $converted of $totalPosts messages<br>";
 				echo "Elapsed time: ".(time() - $timestamp_start)." sec.<br>";
-				flush(); 
-				ob_flush();
-				sleep($server_interval);
+				flushOutput($server_interval);
 			}
 		}
 		$result->free_result();
 	}
 	else
 		echo "Topic/Messages export error.";
+	flushOutput($server_interval);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -759,6 +777,7 @@ if ($do_attachments_images)
 		echo "Users export error.";
 		
 	echo "<hr>";
+	flushOutput($server_interval);
 }
 
 //Clean-up

@@ -17,7 +17,7 @@ $usrFlarum = "";
 $pwdFlarum = "";
 $dbFlarum  = "";
 
-// We introduce a sleeping period every 100 posts to limit the load on the server
+// We introduce a sleeping period every 100 posts to limit the load on the server in ms
 $server_interval = 10;
 // For testing only. Here is possible to set a LIMIT SQL statement for a partial export 
 $limit_topics = "";
